@@ -1,0 +1,18 @@
+# Environment and Keys
+.env
+.lkb_state*.json
+.lkb_db*/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Personal Data (Exclude the research)
+raw/
+wiki/
+attachments/
+synthesized/
+
+# Keep sample directory
+!raw/sample.md

@@ -1,0 +1,20 @@
+# Core Paths
+wiki_dir: wiki/
+templates_dir: templates/
+attachments_dir: attachments/
+tools_dir: tools/
+
+# Tracked Source Directories
+sources:
+  - path: raw/
+    name: Default Raw
+  - path: /Users/languo/src/agentic_memory_eval/
+    name: Agentic Memory Research
+  - path: synthesized/
+    name: Synthesized Reports
+
+# LLM Configuration
+llm:
+  provider: gemini  # options: gemini, openai, ollama
+  model: gemini-2.5-flash
+  temperature: 0.1
