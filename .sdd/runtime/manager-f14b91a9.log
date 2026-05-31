@@ -1,0 +1,24 @@
+YOLO mode is enabled. All tool calls will be automatically approved.
+YOLO mode is enabled. All tool calls will be automatically approved.
+Ripgrep is not available. Falling back to GrepTool.
+Error when talking to Gemini API Full report available at: /var/folders/60/_q2zj5fx0hq6vdvk_771ptv40000gn/T/gemini-client-error-Turn.run-sendMessageStream-2026-05-31T04-39-24-500Z.json ModelNotFoundError: Requested entity was not found.
+    at classifyGoogleError (file:///Users/languo/.nvm/versions/node/v24.13.1/lib/node_modules/@google/gemini-cli/bundle/chunk-GPVT36PL.js:304138:12)
+    at retryWithBackoff (file:///Users/languo/.nvm/versions/node/v24.13.1/lib/node_modules/@google/gemini-cli/bundle/chunk-GPVT36PL.js:304863:31)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async GeminiChat.makeApiCallAndProcessStream (file:///Users/languo/.nvm/versions/node/v24.13.1/lib/node_modules/@google/gemini-cli/bundle/chunk-GPVT36PL.js:328262:28)
+    at async GeminiChat.streamWithRetries (file:///Users/languo/.nvm/versions/node/v24.13.1/lib/node_modules/@google/gemini-cli/bundle/chunk-GPVT36PL.js:328079:29)
+    at async Turn.run (file:///Users/languo/.nvm/versions/node/v24.13.1/lib/node_modules/@google/gemini-cli/bundle/chunk-GPVT36PL.js:328826:24)
+    at async GeminiClient.processTurn (file:///Users/languo/.nvm/versions/node/v24.13.1/lib/node_modules/@google/gemini-cli/bundle/chunk-GPVT36PL.js:342181:22)
+    at async GeminiClient.sendMessageStream (file:///Users/languo/.nvm/versions/node/v24.13.1/lib/node_modules/@google/gemini-cli/bundle/chunk-GPVT36PL.js:342278:14)
+    at async file:///Users/languo/.nvm/versions/node/v24.13.1/lib/node_modules/@google/gemini-cli/bundle/gemini-T3PINYWC.js:10871:26
+    at async main (file:///Users/languo/.nvm/versions/node/v24.13.1/lib/node_modules/@google/gemini-cli/bundle/gemini-T3PINYWC.js:16276:5) {
+  code: 404
+}
+{
+  "session_id": "e5a2804d-5134-4c05-9d28-de52b87deaeb",
+  "error": {
+    "type": "Error",
+    "message": "Requested entity was not found.",
+    "code": 1
+  }
+}
