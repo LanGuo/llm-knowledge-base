@@ -49,6 +49,9 @@ async def ingest_file(file_path, config, topic="default"):
     agent = KnowledgeAgent(wiki_dir=str(topic_dir))
 
     print(f"📄 Processing [{topic}] with [{model_suffix}]: {file_path}")
+    # PyMuPDF/pdftext aren't safe for concurrent multi-threaded use, so this
+    # stays synchronous (blocking the event loop briefly); the slow part —
+    # the LLM compile call — still runs concurrently via asyncio.to_thread.
     text, metadata, attachments = processor.process(file_path)
     
     if not text or "Error extracting PDF" in text or len(text) < 50:
@@ -70,32 +73,44 @@ async def ingest_file(file_path, config, topic="default"):
         return False
 
 async def sync_sources(config):
-    """Processes new files across all sources once."""
+    """Processes new files across all sources once, with bounded concurrency."""
     model_suffix = get_model_suffix(config)
     print(f"🔄 Starting LKB Sync for model: {model_suffix}")
-    
+
     sources = config.get("sources", [])
     processed_files = load_state(config)
     new_count = 0
+    state_lock = asyncio.Lock()
+    parallelism = config.get("llm", {}).get("sync_parallelism", 4)
+    semaphore = asyncio.Semaphore(parallelism)
 
+    pending = []
     for source in sources:
         path = Path(source['path'])
         topic = source.get('name', 'default')
-        
+
         if not path.exists():
             print(f"⚠️ Source path does not exist: {path}")
             continue
-            
+
         for file in path.glob("**/*"):
             if file.is_file() and str(file) not in processed_files:
                 if file.suffix.lower() in ['.pdf', '.md', '.txt', '.html']:
-                    success = await ingest_file(str(file), config, topic=topic)
-                    if success:
-                        processed_files.add(str(file))
-                        new_count += 1
-                        # ATOMIC SAVE: Save state after EVERY successful file
-                        save_state(processed_files, config)
-    
+                    pending.append((file, topic))
+
+    async def process_one(file, topic):
+        nonlocal new_count
+        async with semaphore:
+            success = await ingest_file(str(file), config, topic=topic)
+        if success:
+            async with state_lock:
+                processed_files.add(str(file))
+                new_count += 1
+                # ATOMIC SAVE: Save state after EVERY successful file
+                save_state(processed_files, config)
+
+    await asyncio.gather(*(process_one(file, topic) for file, topic in pending))
+
     print(f"✅ Sync complete. {new_count} new files processed for {model_suffix}.")
 
 def clean_wiki(config):

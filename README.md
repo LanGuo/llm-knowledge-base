@@ -9,8 +9,8 @@ LKB is an agentically maintained personal knowledge system. It treats knowledge 
 To maintain your knowledge base, follow this sequence:
 
 1. **`python lkb.py sync`**: The **Compiler**. Scans tracked directories, converts files to text, extracts images, and uses the LLM to write structured `.md` articles into topic-specific subfolders in `wiki/`.
-2. **`python lkb.py index`**: The **Librarian**. Builds a local LanceDB vector index of all compiled articles for fast searching.
-3. **`python lkb.py query "..."`**: The **Researcher**. Performs hybrid search across your wiki to answer complex research questions. **High-value answers are automatically saved to `synthesized/` to enhance the graph.**
+2. **`python lkb.py index`**: The **Librarian**. Embeds every article with a local Ollama embedding model (`nomic-embed-text` by default, configurable under `embedding:` in `config.yaml`) and builds a local LanceDB vector index for semantic search.
+3. **`python lkb.py query "..."`**: The **Researcher**. Performs semantic vector search across your wiki (embeds the query, finds nearest-neighbor articles by meaning, not just keyword overlap). *Note: the "answers get synthesized and written back to `synthesized/`" self-growth loop described below is the design intent but isn't implemented yet — `query` currently only searches and prints; nothing is written back automatically.*
 4. **`python lkb.py health`**: The **Auditor**. Scans for broken links, orphans, and suggests new research directions based on "knowledge gaps."
 5. **`python lkb.py clean`**: The **Purge**. Removes empty or error-based junk files from the wiki independently of the sync process.
 6. **`python lkb.py resync`**: The **Refresher**. Clears state and re-processes all sources.
@@ -19,8 +19,8 @@ To maintain your knowledge base, follow this sequence:
 
 ## 🧠 Technical Architecture & Design Decisions
 
-### 1. The Self-Synthesis Loop
-LKB is designed to "grow" autonomously. When you use the `query` command to ask a complex question, the system retrieves context, synthesizes an answer, and writes that answer back into the `synthesized/` directory as a new Markdown article. This new article is then indexed and linked during the next `sync` pass, creating a compounding cycle of knowledge.
+### 1. The Self-Synthesis Loop (design intent — not yet implemented)
+LKB is designed to eventually "grow" autonomously: when you use the `query` command to ask a complex question, the system would retrieve context, synthesize an answer, and write that answer back into the `synthesized/` directory as a new Markdown article, which then gets indexed and linked during the next `sync` pass. As of now, `query` only performs search and prints results — this write-back loop hasn't been built. Notes added to `synthesized/` today are added manually.
 
 ### 1. Hybrid Client Strategy
 The system utilizes a dual-path orchestration layer to ensure maximum reliability across cloud and local providers:

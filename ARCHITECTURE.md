@@ -66,16 +66,16 @@ The **Sync** stage is the primary "Compilation" pass.
 ### 2. Index (`index`)
 The **Index** stage prepares the knowledge for high-speed retrieval.
 1.  **Recursive Scan:** Iterates through every `.md` file in the current model's wiki.
-2.  **Tabularize:** Loads title, content, and file paths into a `pandas` DataFrame.
-3.  **LanceDB Ingest:** Overwrites the local `wiki_articles` table in the model-specific LanceDB instance.
-4.  **Search Prep:** (Future V4) Generates vector embeddings for semantic similarity.
+2.  **Embed:** Each article's content is embedded via a local Ollama embedding model (`nomic-embed-text` by default, `embedding:` section in `config.yaml`), truncated to a safe input length (`MAX_EMBED_CHARS` in `tools/search_engine.py`) to stay within the embedding model's own context window. A file whose embed call fails is skipped (logged, not fatal) rather than aborting the whole index.
+3.  **LanceDB Ingest:** Builds an explicit pyarrow schema (title/content/path/vector, with the vector as a fixed-size float32 list sized to the embedding model's actual output dimensionality) and overwrites the local `wiki_articles` table in the model-specific LanceDB instance.
+4.  **No ANN index built by default:** `table.create_index()` is never called, so `search()` does an exact brute-force k-NN scan (confirmed via `explain_plan()`) — correct and effectively instant at this corpus's current scale (~120 articles), but would need an explicit IVF-PQ/HNSW index (`num_partitions` on the order of `sqrt(N)`) if the corpus grows into the thousands.
 
 ### 3. Query (`query`)
 The **Query** stage enables the "Researcher" persona.
-1.  **Search:** Performs a hybrid search (Keyword + Filter) across the LanceDB index.
+1.  **Search:** Embeds the query with the same local embedding model, then performs semantic vector search (L2 distance) against the LanceDB index — not a keyword/substring filter.
 2.  **Context Construction:** Retrieves the top-K most relevant compiled articles.
-3.  **Synthesis:** The LLM answers the user's question based *strictly* on the retrieved wiki context.
-4.  **Self-Synthesis Loop:** High-value answers are automatically written to the `synthesized/` directory as new articles, which are then picked up by the next `sync` pass to further interconnect the graph.
+3.  ~~**Synthesis:** The LLM answers the user's question based *strictly* on the retrieved wiki context.~~ **Not implemented.** `query` currently returns raw search results (title/path/content excerpt); there is no LLM synthesis step over the retrieved context.
+4.  ~~**Self-Synthesis Loop:** High-value answers are automatically written to the `synthesized/` directory...~~ **Not implemented.** No write-back to `synthesized/` happens automatically. (See `synthesized/local_llm_hallucination_on_long_documents.md` and `synthesized/vector_search_and_ann_indexing.md` for examples of what this directory holds today — manually authored notes, not LLM-synthesized query answers.)
 
 ### 4. Health Check (`health`)
 The **Health** stage is an LLM-driven audit.

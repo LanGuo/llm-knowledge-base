@@ -6,6 +6,8 @@ tools_dir: tools/
 
 # Tracked Source Directories
 sources:
+  - path: raw/distillation/
+    name: On-Policy Distillation (AwesomeOPD)
   - path: raw/
     name: Default Raw
   - path: /Users/languo/src/agentic_memory_eval/
@@ -15,6 +17,13 @@ sources:
 
 # LLM Configuration
 llm:
-  provider: gemini  # options: gemini, openai, ollama
-  model: gemini-2.5-flash
+  provider: ollama  # options: gemini, openai, ollama
+  model: gemma4:e4b
   temperature: 0.1
+  sync_timeout_minutes: 10
+  sync_parallelism: 3  # matches OLLAMA_NUM_PARALLEL; higher values thrash the single GPU instead of helping
+
+# Embedding Configuration (used for semantic/vector search)
+embedding:
+  provider: ollama
+  model: nomic-embed-text

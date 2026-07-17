@@ -1,6 +1,8 @@
 import os
 import json
+import re
 import yaml
+import asyncio
 import ollama
 from pathlib import Path
 from typing import List, Optional, Any
@@ -25,6 +27,45 @@ def load_template(filename: str) -> str:
     if path.exists():
         return path.read_text(encoding="utf-8")
     return ""
+
+# Local models frequently emit raw LaTeX (single backslashes) inside JSON
+# string values, e.g. "q_\theta". JSON only recognizes \" \\ \/ \b \f \n \r \t \u
+# as escapes, so \theta/\nabla/\beta/\frac/\rho silently collapse into stray
+# control chars, and macros like \alpha/\sum/\pi/\lambda are outright invalid
+# escapes that make json.loads raise. The model is also inconsistent: some
+# backslashes ARE already correctly JSON-escaped (\\pi = literal backslash +
+# "pi", valid JSON). A naive per-character scan can't tell those apart from a
+# stray single backslash, so we scan maximal runs of backslashes and check
+# parity: an even-length run is already N/2 valid escaped-backslash pairs and
+# is left untouched; an odd-length run's last backslash is the "real" one and
+# gets checked against what follows.
+_N_MACRO_RE = re.compile(r'^(abla|eq|otin|i(?![a-zA-Z]))')
+
+def repair_latex_json(raw: str) -> str:
+    """Double-escapes stray backslashes from raw LaTeX so json.loads doesn't
+    corrupt or choke on math notation in LLM output."""
+    def fix_run(m: "re.Match[str]") -> str:
+        run = m.group(0)
+        if len(run) % 2 == 0:
+            return run  # already valid \\ pairs
+        pos = m.end()
+        nxt = raw[pos:pos + 1]
+        if nxt == 'u':
+            if re.match(r'^[0-9a-fA-F]{4}', raw[pos + 1:pos + 5]):
+                return run  # valid \uXXXX
+            return run + '\\'
+        if nxt in ('"', '/'):
+            return run
+        if nxt == 'n':
+            # \n is the only escape this pipeline's prose legitimately emits
+            # (paragraph breaks), except for a handful of LaTeX macros that
+            # also start with 'n' and would otherwise be corrupted.
+            if _N_MACRO_RE.match(raw[pos + 1:pos + 9]):
+                return run + '\\'
+            return run
+        # b/f/r/t/anything else: never an intentional control char here.
+        return run + '\\'
+    return re.sub(r'\\+', fix_run, raw)
 
 class KnowledgeAgent:
     def __init__(self, wiki_dir: str = "wiki"):
@@ -63,7 +104,10 @@ class KnowledgeAgent:
         # Add JSON schema requirement to prompt
         full_prompt = f"{self.instructions}\n\nRESPONSE REQUIREMENT: Output valid JSON that matches the WikiArticle schema.\n\n{prompt}"
         
-        response = ollama.chat(
+        # ollama.chat() is a blocking call; run it in a thread so concurrent
+        # ingests don't serialize on the asyncio event loop.
+        response = await asyncio.to_thread(
+            ollama.chat,
             model=self.model_name,
             messages=[{'role': 'user', 'content': full_prompt}],
             format=WikiArticle.model_json_schema(), # Native Schema constraint
@@ -74,7 +118,19 @@ class KnowledgeAgent:
         )
         
         content = response['message']['content']
-        data = json.loads(content)
+        # Repair proactively: bad escapes like \theta/\nabla/\beta/\frac/\rho
+        # parse "successfully" but silently corrupt into control chars, so we
+        # can't rely on JSONDecodeError to tell us repair is needed.
+        repaired = repair_latex_json(content)
+        try:
+            data = json.loads(repaired)
+        except json.JSONDecodeError as e:
+            debug_dir = Path("/tmp/lkb_json_failures")
+            debug_dir.mkdir(exist_ok=True)
+            debug_path = debug_dir / f"fail_{abs(hash(content)) % 100000}.json"
+            debug_path.write_text(content, encoding="utf-8")
+            print(f"⚠️ JSON parse failed even after repair, dumped to {debug_path}: {e}")
+            raise
         return WikiArticle(**data)
 
     def save_to_wiki(self, article: WikiArticle, filename: str):
