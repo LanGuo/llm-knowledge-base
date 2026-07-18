@@ -73,18 +73,20 @@ class KnowledgeAgent:
         self.wiki_dir.mkdir(exist_ok=True, parents=True)
         self.structure = load_template("article_structure.md")
         self.instructions = load_template("compiler_instructions.txt")
-        
+        self.synthesis_instructions = load_template("synthesis_instructions.txt")
+
         # Load config to determine provider
         with open("config.yaml", "r") as f:
             self.config = yaml.safe_load(f)
-        
+
         self.provider = self.config.get("llm", {}).get("provider", "gemini")
         self.model_name = self.config.get("llm", {}).get("model", "gemini-2.5-flash")
-        
+
         if self.provider != "ollama":
             # Use pydantic-ai for non-Ollama models
             self.model = get_model()
             self.agent = Agent(self.model, output_type=WikiArticle, instructions=self.instructions)
+            self.synthesis_agent = Agent(self.model, output_type=WikiArticle, instructions=self.synthesis_instructions)
 
     async def compile(self, raw_text: str, metadata: dict, attachments: List[str] = None) -> WikiArticle:
         """Transforms raw text into a WikiArticle, branching by provider."""
@@ -92,18 +94,34 @@ class KnowledgeAgent:
         prompt = f"Source Metadata: {metadata}\nAvailable Image Attachments: {attachment_str}\n\nRaw Content:\n{raw_text}"
 
         if self.provider == "ollama":
-            return await self._compile_ollama(prompt)
+            return await self._run_ollama(self.instructions, prompt)
         else:
             result = await self.agent.run(prompt)
             return result.output
 
-    async def _compile_ollama(self, prompt: str) -> WikiArticle:
+    async def synthesize(self, query: str, context_articles: List[dict]) -> WikiArticle:
+        """Answers a query using retrieved wiki articles as grounding context."""
+        # Truncate per-article so a handful of long articles can't blow the
+        # context budget; full content lives in the article files themselves.
+        context_str = "\n\n---\n\n".join(
+            f"[Source: {a['title']} ({a['path']})]\n{a['content'][:3000]}"
+            for a in context_articles
+        )
+        prompt = f"Question: {query}\n\nKnowledge Base Context:\n{context_str}"
+
+        if self.provider == "ollama":
+            return await self._run_ollama(self.synthesis_instructions, prompt)
+        else:
+            result = await self.synthesis_agent.run(prompt)
+            return result.output
+
+    async def _run_ollama(self, instructions: str, prompt: str) -> WikiArticle:
         """Uses native ollama library with JSON mode for robustness."""
         print(f"🤖 [Ollama] Processing with JSON Mode...")
-        
+
         # Add JSON schema requirement to prompt
-        full_prompt = f"{self.instructions}\n\nRESPONSE REQUIREMENT: Output valid JSON that matches the WikiArticle schema.\n\n{prompt}"
-        
+        full_prompt = f"{instructions}\n\nRESPONSE REQUIREMENT: Output valid JSON that matches the WikiArticle schema.\n\n{prompt}"
+
         # ollama.chat() is a blocking call; run it in a thread so concurrent
         # ingests don't serialize on the asyncio event loop.
         response = await asyncio.to_thread(
@@ -116,7 +134,7 @@ class KnowledgeAgent:
                 'num_ctx': 65536 # Ensure long context support
             }
         )
-        
+
         content = response['message']['content']
         # Repair proactively: bad escapes like \theta/\nabla/\beta/\frac/\rho
         # parse "successfully" but silently corrupt into control chars, so we

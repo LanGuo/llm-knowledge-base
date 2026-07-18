@@ -10,7 +10,7 @@ To maintain your knowledge base, follow this sequence:
 
 1. **`python lkb.py sync`**: The **Compiler**. Scans tracked directories, converts files to text, extracts images, and uses the LLM to write structured `.md` articles into topic-specific subfolders in `wiki/`.
 2. **`python lkb.py index`**: The **Librarian**. Embeds every article with a local Ollama embedding model (`nomic-embed-text` by default, configurable under `embedding:` in `config.yaml`) and builds a local LanceDB vector index for semantic search.
-3. **`python lkb.py query "..."`**: The **Researcher**. Performs semantic vector search across your wiki (embeds the query, finds nearest-neighbor articles by meaning, not just keyword overlap). *Note: the "answers get synthesized and written back to `synthesized/`" self-growth loop described below is the design intent but isn't implemented yet — `query` currently only searches and prints; nothing is written back automatically.*
+3. **`python lkb.py query "..."`**: The **Researcher**. Performs semantic vector search across your wiki (embeds the query, finds nearest-neighbor articles by meaning), then synthesizes a grounded answer citing the retrieved articles. **Nothing is written back automatically** — pass `--save` to write the synthesized answer to `synthesized/` as a new article; without the flag it just prints.
 4. **`python lkb.py health`**: The **Auditor**. Scans for broken links, orphans, and suggests new research directions based on "knowledge gaps."
 5. **`python lkb.py clean`**: The **Purge**. Removes empty or error-based junk files from the wiki independently of the sync process.
 6. **`python lkb.py resync`**: The **Refresher**. Clears state and re-processes all sources.
@@ -19,8 +19,8 @@ To maintain your knowledge base, follow this sequence:
 
 ## 🧠 Technical Architecture & Design Decisions
 
-### 1. The Self-Synthesis Loop (design intent — not yet implemented)
-LKB is designed to eventually "grow" autonomously: when you use the `query` command to ask a complex question, the system would retrieve context, synthesize an answer, and write that answer back into the `synthesized/` directory as a new Markdown article, which then gets indexed and linked during the next `sync` pass. As of now, `query` only performs search and prints results — this write-back loop hasn't been built. Notes added to `synthesized/` today are added manually.
+### 1. The Self-Synthesis Loop
+When you use the `query` command to ask a complex question, the system retrieves context via vector search, synthesizes an answer grounded in that context (citing which articles support each point), and — only if you pass `--save` — writes that answer back into the `synthesized/` directory as a new Markdown article. `synthesized/` is itself a tracked source, so a saved answer gets picked up (and re-compiled into the topic wiki) on the next `sync` pass. Saving is opt-in by design: every query being written to disk by default would fill the KB with one-off, unreviewed answers.
 
 ### 1. Hybrid Client Strategy
 The system utilizes a dual-path orchestration layer to ensure maximum reliability across cloud and local providers:

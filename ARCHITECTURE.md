@@ -73,9 +73,9 @@ The **Index** stage prepares the knowledge for high-speed retrieval.
 ### 3. Query (`query`)
 The **Query** stage enables the "Researcher" persona.
 1.  **Search:** Embeds the query with the same local embedding model, then performs semantic vector search (L2 distance) against the LanceDB index — not a keyword/substring filter.
-2.  **Context Construction:** Retrieves the top-K most relevant compiled articles.
-3.  ~~**Synthesis:** The LLM answers the user's question based *strictly* on the retrieved wiki context.~~ **Not implemented.** `query` currently returns raw search results (title/path/content excerpt); there is no LLM synthesis step over the retrieved context.
-4.  ~~**Self-Synthesis Loop:** High-value answers are automatically written to the `synthesized/` directory...~~ **Not implemented.** No write-back to `synthesized/` happens automatically. (See `synthesized/local_llm_hallucination_on_long_documents.md` and `synthesized/vector_search_and_ann_indexing.md` for examples of what this directory holds today — manually authored notes, not LLM-synthesized query answers.)
+2.  **Context Construction:** Retrieves the top-K most relevant compiled articles (content truncated per-article to stay within the synthesis prompt's context budget).
+3.  **Synthesis:** The LLM (`KnowledgeAgent.synthesize`, `templates/synthesis_instructions.txt`) answers the user's question strictly from the retrieved context, returning a `WikiArticle`-shaped answer that cites which source article(s) support each point.
+4.  **Self-Synthesis Loop (opt-in):** Passing `--save` writes the synthesized answer to the `synthesized/` directory via the same `save_to_wiki` path used for compiled papers. This is **not automatic** — by design, only explicitly-saved answers get written, to avoid filling the KB with unreviewed one-off answers. Saved notes are picked up and re-compiled into the topic wiki on the next `sync` pass, since `synthesized/` is itself a tracked source.
 
 ### 4. Health Check (`health`)
 The **Health** stage is an LLM-driven audit.

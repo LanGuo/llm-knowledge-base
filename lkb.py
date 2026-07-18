@@ -2,6 +2,7 @@ import asyncio
 import argparse
 import yaml
 import os
+import re
 import json
 import shutil
 from pathlib import Path
@@ -16,6 +17,19 @@ load_dotenv()
 def load_config():
     with open("config.yaml", "r") as f:
         return yaml.safe_load(f)
+
+def slugify(text, wiki_dir="synthesized", max_len=50):
+    """Turns a query string into a filesystem-safe filename, avoiding
+    collisions with existing files by appending a numeric suffix."""
+    slug = re.sub(r'[^a-z0-9]+', '_', text.lower()).strip('_')[:max_len]
+    slug = slug or "query"
+    path = Path(wiki_dir)
+    candidate = slug
+    i = 2
+    while (path / f"{candidate}.md").exists():
+        candidate = f"{slug}_{i}"
+        i += 1
+    return candidate
 
 def get_model_suffix(config):
     llm = config.get("llm", {})
@@ -172,6 +186,7 @@ def main():
     # Search command
     search_parser = subparsers.add_parser("query", help="Query the wiki search index")
     search_parser.add_argument("query", help="Search query")
+    search_parser.add_argument("--save", action="store_true", help="Save the synthesized answer to synthesized/")
 
     # Index command
     index_parser = subparsers.add_parser("index", help="Index the wiki for search")
@@ -209,9 +224,18 @@ def main():
         results = engine.search(args.query)
         if not results:
             print(f"❌ No matches found for '{args.query}'")
-        for res in results:
-            print(f"\n📄 {res['title']} ({res['path']})\n---")
-            print(res['content'][:200] + "...")
+        else:
+            agent = KnowledgeAgent(wiki_dir="synthesized")
+            article = asyncio.run(agent.synthesize(args.query, results))
+            print(f"\n💡 {article.title}\n{'=' * 60}\n")
+            print(article.summary)
+            print(f"\n{article.content}\n")
+            print("📚 Sources:")
+            for res in results:
+                print(f"  - {res['title']} ({res['path']})")
+            if args.save:
+                filename = slugify(args.query)
+                agent.save_to_wiki(article, filename=filename)
     else:
         parser.print_help()
 
